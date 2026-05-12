@@ -242,14 +242,26 @@ function downloadAnnotationFile(videoId) {
 
 function sendLoadMessage(type, data) {
 	if (!type || !data) {
-		return;
+		return Promise.reject("Invalid message type or data");
 	}
 
-	chrome.tabs.query({currentWindow: true, active: true}, tabs => {
-		if (tabs[0]) {
+	return new Promise((resolve, reject) => {
+		chrome.tabs.query({currentWindow: true, active: true}, tabs => {
+			if (!tabs[0]) {
+				reject("No active tab found");
+				return;
+			}
+
 			const tab = tabs[0];
-			chrome.tabs.sendMessage(tab.id, { type, data });
-		}
+			chrome.tabs.sendMessage(tab.id, { type, data }, response => {
+				const error = chrome.runtime.lastError;
+				if (error) {
+					reject(error.message);
+					return;
+				}
+				resolve(response);
+			});
+		});
 	});
 }
 
@@ -285,7 +297,18 @@ loadAnnotationFileElement.addEventListener("click", () => {
 	filePicker.addEventListener("change", () => {
 		const reader = new FileReader();
 		reader.addEventListener("load", () => {
-			sendLoadMessage("popup_load_youtube", reader.result);
+			sendLoadMessage("popup_load_youtube", reader.result)
+				.then(() => {
+					console.info("Annotation file loaded successfully");
+				})
+				.catch(error => {
+					console.error("Failed to load annotation file:", error);
+					alert(`Failed to load annotations: ${error}\n\nMake sure you're on a YouTube video page.`);
+				});
+		});
+		reader.addEventListener("error", () => {
+			console.error("Failed to read file:", reader.error);
+			alert("Failed to read the selected file.");
 		});
 		reader.readAsText(filePicker.files[0]);
 	});
